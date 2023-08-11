@@ -11,13 +11,7 @@ from common import update_params
 from vocoder.inference_mel_folder import process_folder
 
 
-def lines_to_list(filename):
-    with open(filename, encoding='utf-8') as f:
-        files = f.readlines()
-    return [f.rstrip() for f in files]
-
-
-def infer(radtts_path, vocoder_path, vocoder_config_path, text_path, speaker,
+def infer(radtts_path, vocoder_path, vocoder_config_path, text, speaker,
           speaker_text, speaker_attributes, sigma, sigma_tkndur, sigma_f0,
           sigma_energy, f0_mean, f0_std, energy_mean, energy_std,
           token_dur_scaling, denoising_strength, n_takes, output_dir, use_amp,
@@ -26,13 +20,13 @@ def infer(radtts_path, vocoder_path, vocoder_config_path, text_path, speaker,
     torch.manual_seed(seed)
 
     radtts = RADTTS(**model_config)
-    radtts.enable_inverse_cache() # cache inverse matrix for 1x1 invertible convs
+    radtts.enable_inverse_cache()  # cache inverse matrix for 1x1 invertible convs
 
     weights = torch.load(radtts_path, map_location='cpu')
     radtts.load_state_dict(weights, strict=False)
     radtts.eval()
 
-    print("Loaded checkpoint '{}')" .format(radtts_path))
+    print("Loaded checkpoint '{}')".format(radtts_path))
 
     ignore_keys = ['training_files', 'validation_files']
     trainset = Data(
@@ -44,7 +38,7 @@ def infer(radtts_path, vocoder_path, vocoder_config_path, text_path, speaker,
     speaker_id_attributes = 'lada'
     speaker_id_attributes = torch.LongTensor([0])
 
-    text_list = lines_to_list(text_path)
+    text_list = [text]  # Wrap the provided text into a list
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -69,7 +63,7 @@ def infer(radtts_path, vocoder_path, vocoder_config_path, text_path, speaker,
 
                     torch.save(mel, filename_mel)
 
-    # Use vocoder to convert MELs to WAVs    
+    # Use vocoder to convert MELs to WAVs
     process_folder(output_dir, vocoder_path, vocoder_config_path, denoising_strength)
 
 
@@ -78,7 +72,7 @@ if __name__ == "__main__":
     parser.add_argument('-c', '--config', type=str, help='JSON file config')
     parser.add_argument('-p', '--params', nargs='+', default=[])
     parser.add_argument('-r', '--radtts_path', type=str)
-    parser.add_argument('-t', '--text_path', type=str)
+    parser.add_argument('-t', '--text', type=str)  # Changed from text_path to text
     parser.add_argument('-vcf', '--vocoder_path', type=str)
     parser.add_argument('-vcp', '--vocoder_config_path', type=str)
     parser.add_argument('-d', '--denoising_strength', type=float, default=0.0)
@@ -110,7 +104,7 @@ if __name__ == "__main__":
     model_config = config["model_config"]
 
     infer(args.radtts_path, args.vocoder_path, args.vocoder_config_path,
-          args.text_path, '', '',
+          args.text, '', '',
           '', args.sigma, args.sigma_tkndur, args.sigma_f0,
           args.sigma_energy, args.f0_mean, args.f0_std, args.energy_mean,
           args.energy_std, args.token_dur_scaling, args.denoising_strength,
