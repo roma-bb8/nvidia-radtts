@@ -68,7 +68,7 @@ def window_sumsquare(window, n_frames, hop_length=200, win_length=800,
     # Compute the squared window at the desired length
     win_sq = get_window(window, win_length, fftbins=True)
     win_sq = librosa_util.normalize(win_sq, norm=norm)**2
-    win_sq = librosa_util.pad_center(win_sq, n_fft)
+    win_sq = librosa_util.pad_center(win_sq, n_fft, size=len(win_sq))
 
     # Fill the envelope
     for i in range(n_frames):
@@ -217,7 +217,7 @@ class STFT(torch.nn.Module):
             assert(win_length >= filter_length)
             # get window and zero center pad it to filter_length
             fft_window = get_window(window, win_length, fftbins=True)
-            fft_window = pad_center(fft_window, filter_length)
+            fft_window = pad_center(fft_window, filter_length, size=len(fft_window))
             fft_window = torch.from_numpy(fft_window).float()
 
             # window the bases
