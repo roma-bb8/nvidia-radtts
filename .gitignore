@@ -1,5 +1,6 @@
 __pycache__
 
 models/
+.idea/*
 
 .DS_Store

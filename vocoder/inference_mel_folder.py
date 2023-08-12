@@ -1,11 +1,9 @@
 import os
 import json
 import numpy as np
-from glob import glob
-from sys import platform
 
 import torch
-from scipy.io.wavfile import write, read
+from scipy.io.wavfile import write
 
 from .models import Generator
 from .denoiser import Denoiser
@@ -82,50 +80,22 @@ def float2pcm(sig, dtype='int16'):
     return (sig * abs_max + offset).clip(i.min, i.max).astype(dtype)
 
 
-def inference(input_mel_folder, vocoder_path, vocoder_config_path, denoising_strength):
+def process_folder(input_mel_folder, vocoder_path, vocoder_config_path, denoising_strength, file_name):
     vocoder, denoiser = load_vocoder(vocoder_path, vocoder_config_path)
 
     with torch.no_grad():
-        files_all = []
-        for input_mel_file in glob(input_mel_folder +'/*.mel'):
-            x = torch.load(input_mel_file)
-            audio = vocoder(x).float()[0]
-            audio_denoised = denoiser(
-                audio, strength=denoising_strength)[0].float()
+        input_mel_file = input_mel_folder + f'{file_name}.mel'
+        mel_file = torch.load(input_mel_file)
+        audio = vocoder(mel_file).float()[0]
 
-            audio = audio[0].cpu().numpy()
-            audio_denoised = audio_denoised[0].cpu().numpy()
-            audio_denoised = audio_denoised / np.max(np.abs(audio_denoised))
+        audio_denoised = denoiser(audio, strength=denoising_strength)[0].float()
+        audio_denoised = audio_denoised[0].cpu().numpy()
+        audio_denoised = audio_denoised / np.max(np.abs(audio_denoised))
 
-            # form a filename
-            output_file = input_mel_file.replace('.mel','.wav')
+        sig = float2pcm(audio_denoised, dtype='int16')
 
-            # convert to pcm 16 bit
-            sig = float2pcm(audio_denoised, dtype='int16')
+        output_file = input_mel_file.replace('.mel', '.wav')
+        write(output_file, 22050, sig)  # 22050
+        print('<<--', output_file)
 
-            # save the data to the file
-            write(output_file, 22050, sig)
-
-            print('<<--',output_file)
-
-            files_all.append(output_file)
-
-            os.remove(input_mel_file)
-
-        s = '/'
-        if platform == "win32":
-            s = 'results\\'
-
-        names = []
-        for k in files_all:
-            names.append(int(k.replace(input_mel_folder, '').replace(s, '').replace('.wav', '')))
-
-        names_w = [f'{it}.wav' for it in sorted(names)]
-
-        print('To combine all files into one, use this command:')
-        print('')
-        print('sox ' + ' '.join(names_w) + ' all.wav')
-
-
-def process_folder(input_mel_folder, vocoder_path, vocoder_config_path, denoising_strength):
-    inference(input_mel_folder, vocoder_path, vocoder_config_path, denoising_strength)
+        os.remove(input_mel_file)

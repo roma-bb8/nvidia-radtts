@@ -15,56 +15,55 @@ def infer(radtts_path, vocoder_path, vocoder_config_path, text, speaker,
           speaker_text, speaker_attributes, sigma, sigma_tkndur, sigma_f0,
           sigma_energy, f0_mean, f0_std, energy_mean, energy_std,
           token_dur_scaling, denoising_strength, n_takes, output_dir, use_amp,
-          plot, seed):
+          plot, seed, file_name):
+    os.makedirs(output_dir, exist_ok=True)
 
     torch.manual_seed(seed)
+    weights = torch.load(radtts_path, map_location='cpu')
 
     radtts = RADTTS(**model_config)
     radtts.enable_inverse_cache()  # cache inverse matrix for 1x1 invertible convs
-
-    weights = torch.load(radtts_path, map_location='cpu')
     radtts.load_state_dict(weights, strict=False)
     radtts.eval()
 
     print("Loaded checkpoint '{}')".format(radtts_path))
 
-    ignore_keys = ['training_files', 'validation_files']
     trainset = Data(
         data_config['training_files'],
-        **dict((k, v) for k, v in data_config.items() if k not in ignore_keys))
+        **dict((k, v) for k, v in data_config.items() if k not in ['training_files', 'validation_files'])
+    )
 
     speaker_id = torch.LongTensor([0])
     speaker_id_text = torch.LongTensor([0])
-    speaker_id_attributes = 'lada'
     speaker_id_attributes = torch.LongTensor([0])
 
-    text_list = [text]  # Wrap the provided text into a list
+    text = trainset.get_text(text)[None]
+    with amp.autocast(use_amp):
+        with torch.no_grad():
+            outputs = radtts.infer(
+                speaker_id,
+                text,
+                sigma,
+                sigma_tkndur,
+                sigma_f0,
+                sigma_energy,
+                token_dur_scaling,
+                token_duration_max=100,
+                speaker_id_text=speaker_id_text,
+                speaker_id_attributes=speaker_id_attributes,
+                f0_mean=f0_mean,
+                f0_std=f0_std,
+                energy_mean=energy_mean,
+                energy_std=energy_std
+            )
 
-    os.makedirs(output_dir, exist_ok=True)
+            mel = outputs['mel']
+            filename_mel = f'{output_dir}/{file_name}.mel'
 
-    for i, text in enumerate(text_list):
-        if text.startswith("#"):
-            continue
-        print("{}/{}: {}".format(i, len(text_list), text))
-        text = trainset.get_text(text)[None]
-        for take in range(n_takes):
-            with amp.autocast(use_amp):
-                with torch.no_grad():
-                    outputs = radtts.infer(
-                        speaker_id, text, sigma, sigma_tkndur, sigma_f0,
-                        sigma_energy, token_dur_scaling, token_duration_max=100,
-                        speaker_id_text=speaker_id_text,
-                        speaker_id_attributes=speaker_id_attributes,
-                        f0_mean=f0_mean, f0_std=f0_std, energy_mean=energy_mean,
-                        energy_std=energy_std)
-
-                    mel = outputs['mel']
-                    filename_mel = f'{output_dir}/{i}.mel'
-
-                    torch.save(mel, filename_mel)
+            torch.save(mel, filename_mel)
 
     # Use vocoder to convert MELs to WAVs
-    process_folder(output_dir, vocoder_path, vocoder_config_path, denoising_strength)
+    process_folder(output_dir, vocoder_path, vocoder_config_path, denoising_strength, file_name)
 
 
 if __name__ == "__main__":
@@ -77,6 +76,7 @@ if __name__ == "__main__":
     parser.add_argument('-vcp', '--vocoder_config_path', type=str)
     parser.add_argument('-d', '--denoising_strength', type=float, default=0.0)
     parser.add_argument('-o', "--output_dir", default="results")
+    parser.add_argument('-fn', "--file_name", default="speech")
     parser.add_argument("--sigma", default=0.8, type=float, help="sampling sigma for decoder")
     parser.add_argument("--sigma_tkndur", default=0.666, type=float, help="sampling sigma for duration")
     parser.add_argument("--sigma_f0", default=1.0, type=float, help="sampling sigma for f0")
@@ -108,4 +108,4 @@ if __name__ == "__main__":
           '', args.sigma, args.sigma_tkndur, args.sigma_f0,
           args.sigma_energy, args.f0_mean, args.f0_std, args.energy_mean,
           args.energy_std, args.token_dur_scaling, args.denoising_strength,
-          args.n_takes, args.output_dir, args.use_amp, False, args.seed)
+          args.n_takes, args.output_dir, args.use_amp, False, args.seed, args.file_name)
